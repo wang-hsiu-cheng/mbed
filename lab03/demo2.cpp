@@ -11,8 +11,9 @@ int main()
     // led = 0.5f;                // shorthand for led.write()
     while (1)
     {
-        led.period_ms(4000);     // 4 second period
-        led.write(0.50f);        // 50% duty cycle, relative to period
+        led.period_ms(4000); // 4 second period
+        led = 1.0f;          // shorthand for led.write()
+        // led.write(0.50f);        // 50% duty cycle, relative to period
         led.pulsewidth_ms(2000); // alternative to led.write, set duty cycle time in milliseconds
     }
 }
