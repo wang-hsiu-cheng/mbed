@@ -19,6 +19,7 @@
 
 #define LVGL_TICK 5 // Time tick value for lvgl in 5ms (1-10ms)
 #define ITEMS 2
+#define MAXIMUM_BUFFER_SIZE 6
 #define waveformLength (128)
 #define lookUpTableDelay (10)
 #define bufferLength (32)
@@ -26,8 +27,8 @@
 using namespace std::chrono;
 
 // LCD           VCC GND  CS  RESET DC/RS  SDI/MOSI  SCK  SDO/MISO  LED
-// mbed          5V, GND, D10,D9,   D8,    D11,      D13, D12,      3V3
-LCD lcd(D10, D9, D8, D11, D13, D12);
+// mbed          5V, GND, D7, D6,   D8,    D11,      D13, D12,      3V3
+LCD lcd(D7, D6, D8, D11, D13, D12);
 // Touch             tclk,  tcs,          tdin,  dout,  irq
 // mbed (L4S5I)PMOD. PD_1,  PD_2 (Buttom) PD_3,  PD_4,  PD_5
 UTouch myTouch(PD_1, PD_2, PD_3, PD_4, PD_5);
@@ -35,15 +36,19 @@ UTouch myTouch(PD_1, PD_2, PD_3, PD_4, PD_5);
 // SPISlave device(PD_4, PD_3, PD_1, PD_0); // mosi, miso, sclk, cs; PMOD pins
 // SPI spi(D11, D12, D13);                  // mosi, miso, sclk
 UTouch device(A5, A4, A3, A2); // mosi, miso, sclk, cs; PMOD pins
-UTouch spi(D5, D6, D7);        // mosi, miso, sclk
+UTouch spi(D5, D14, D15);      // mosi, miso, sclk
 
-DigitalOut cs(D14);
-AnalogOut Aout(D15);
+DigitalOut cs(A0);
+AnalogOut Aout(PD_0); // audio out
 InterruptIn keyboard0(D2);
 InterruptIn keyboard1(D3);
 InterruptIn keyboard2(D4);
 InterruptIn button(BUTTON1);
 EventQueue queue(32 * EVENTS_EVENT_SIZE);
+
+static BufferedSerial machine(D10, D9); // tx, rx  D10:tx  D9:rx
+static BufferedSerial pc(D1, D0);       // tx, rx  D1:tx   D0:rx
+static BufferedSerial serial_port(USBTX, USBRX);
 
 Thread thread_master;
 Thread thread_slave;
@@ -101,6 +106,12 @@ int slave()
             money += device.touch_ReadData(); // Read byte from master
             printf("%d\n", money);
         }
+        if (serial_port.readable())
+        {
+            char input;
+            uint32_t num = serial_port.read(&input, 1);
+            pc.write(&input, 1);
+        }
     }
 }
 
@@ -141,6 +152,17 @@ int master()
     {
         lv_ticker_func();
         ThisThread::sleep_for(5ms);
+
+        if (machine.readable())
+        {
+            int receive;
+            machine.read(&receive, 1);
+            if (receive == 0 || receive == 1)
+                add_item_amount(receive);
+            else if (receive == 2)
+                check_item_state();
+            printf("%d\n", receive);
+        }
 
         // Read raw accelerometer data
         // accelerometer.GetAcceleromterSensor(rawAccelerationData);
@@ -432,6 +454,19 @@ int main()
     //     // // Run the server. This should never exit
     //     // printf("Running server.\n");
     //     // rpc_server.run();
+    // Set desired properties (9600-8-N-1).
+    machine.set_baud(9600);
+    machine.set_format(
+        /* bits */ 8,
+        /* parity */ BufferedSerial::None,
+        /* stop bit */ 1);
+
+    // Set desired properties (9600-8-N-1).
+    pc.set_baud(9600);
+    pc.set_format(
+        /* bits */ 8,
+        /* parity */ BufferedSerial::None,
+        /* stop bit */ 1);
 
     thread_slave.start(slave);
     thread_master.start(master);
