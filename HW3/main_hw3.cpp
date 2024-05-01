@@ -7,13 +7,6 @@
 
 #include "drivers/DigitalOut.h"
 
-// #include "erpc_simple_server.hpp"
-// #include "erpc_basic_codec.hpp"
-// #include "erpc_crc16.hpp"
-// #include "UARTTransport.h"
-// #include "DynamicMessageBufferFactory.h"
-// #include "vending_machine_server.h"
-
 #include "accelerometer.h"
 #include "gyro.h"
 
@@ -28,18 +21,18 @@ using namespace std::chrono;
 
 // LCD           VCC GND  CS  RESET DC/RS  SDI/MOSI  SCK  SDO/MISO  LED
 // mbed          5V, GND, D7, D6,   D8,    D11,      D13, D12,      3V3
-LCD lcd(D7, D6, D8, D11, D13, D12);
+LCD lcd(D6, D5, D8, D11, D13, D12);
 // Touch             tclk,  tcs,          tdin,  dout,  irq
 // mbed (L4S5I)PMOD. PD_1,  PD_2 (Buttom) PD_3,  PD_4,  PD_5
 UTouch myTouch(PD_1, PD_2, PD_3, PD_4, PD_5);
 
 // SPISlave device(PD_4, PD_3, PD_1, PD_0); // mosi, miso, sclk, cs; PMOD pins
 // SPI spi(D11, D12, D13);                  // mosi, miso, sclk
-UTouch device(A5, A4, A3, A2); // mosi, miso, sclk, cs; PMOD pins
-UTouch spi(D5, D14, D15);      // mosi, miso, sclk
+// UTouch device(A5, A4, A3, A2); // mosi, miso, sclk, cs; PMOD pins
+// UTouch spi(D5, D14, D15);      // mosi, miso, sclk
 
-DigitalOut cs(A0);
-AnalogOut Aout(PD_0); // audio out
+// DigitalOut cs(A0);
+AnalogOut Aout(D7); // audio out
 InterruptIn keyboard0(D2);
 InterruptIn keyboard1(D3);
 InterruptIn keyboard2(D4);
@@ -54,13 +47,6 @@ Thread thread_master;
 Thread thread_slave;
 Thread t;
 
-// /** erpc infrastructure */
-// ep::UARTTransport uart_transport(D1, D0, 9600);
-// ep::DynamicMessageBufferFactory dynamic_mbf;
-// erpc::BasicCodecFactory basic_cf;
-// erpc::Crc16 crc16;
-// erpc::SimpleServer rpc_server;
-
 const microseconds TICKER_TIME = LVGL_TICK * 1ms; // modified to miliseconds 5000us=5ms
 
 void lv_ticker_func();
@@ -74,6 +60,7 @@ void playNote(int, int);
 void add_item_amount(uint8_t);
 uint8_t check_item_state();
 
+const float frequency[]={261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88, 523.25};
 int itemPrice[ITEMS] = {20, 30};
 int itemNumbers[ITEMS] = {5, 5};
 int inputChange = 0;
@@ -101,16 +88,30 @@ int slave()
 
     while (1)
     {
-        if (device.DataAvailable())
-        {
-            money += device.touch_ReadData(); // Read byte from master
-            printf("%d\n", money);
-        }
+        // if (device.DataAvailable())
+        // {
+        //     // money += device.touch_ReadData(); // Read byte from master
+        //     printf("%d\n", money);
+        // }
         if (serial_port.readable())
         {
             char input;
+            char toMachine;
             uint32_t num = serial_port.read(&input, 1);
-            pc.write(&input, 1);
+            // printf("%c", input);
+            // pc.write(&input, 1);
+            // add_item_amount(0);
+            // check_item_state();
+            if (input == '0')
+            {
+                toMachine = 'c';
+                pc.write(&toMachine, 1);
+            }
+            else if (input == '1')
+            {
+                toMachine = 's';
+                pc.write(&toMachine, 1);
+            }
         }
     }
 }
@@ -123,89 +124,34 @@ void add_item_amount(uint8_t itemCode)
 }
 uint8_t check_item_state()
 {
+    int itemState = money * 100 + itemNumbers[0] * 10 + itemNumbers[1];
+    pc.write(&itemState, 1);
     return (money * 100 + itemNumbers[0] * 10 + itemNumbers[1]);
 }
 
-int master()
-{
-    // spi.format(8, 3);
-    // spi.frequency(1000000);
 
-    printf("LittlevGL DEMO\n");
-    display_init();
-    touchpad_init();
-    lv_demo_items();
-
-    Accelerometer accelerometer;
-    Gyro gyroscope;
-    double rawAccelerationData[3];
-    double calibratedAccelerationData[3];
-    double rawGyroData[3];
-    double calibratedGyroData[3];
-
-    t.start(callback(&queue, &EventQueue::dispatch_forever));
-    keyboard0.fall(queue.event(InputChange, 50));
-    keyboard1.fall(queue.event(InputChange, 10));
-    keyboard2.fall(queue.event(InputChange, 1));
-
-    while (true)
-    {
-        lv_ticker_func();
-        ThisThread::sleep_for(5ms);
-
-        if (machine.readable())
-        {
-            int receive;
-            machine.read(&receive, 1);
-            if (receive == 0 || receive == 1)
-                add_item_amount(receive);
-            else if (receive == 2)
-                check_item_state();
-            printf("%d\n", receive);
-        }
-
-        // Read raw accelerometer data
-        // accelerometer.GetAcceleromterSensor(rawAccelerationData);
-        // Calibrate accelerometer data
-        // accelerometer.GetAcceleromterCalibratedData(calibratedAccelerationData);
-        // Read raw gyroscope data
-        gyroscope.GetGyroSensor(rawGyroData);
-        // Calibrate gyroscope data
-        // gyroscope.GetGyroCalibratedData(calibratedGyroData);
-        // Print calibrated sensor data
-        // printf(
-        //     "%g\t"
-        //     "%g\t"
-        //     "%g\t"
-        //     "%g\t"
-        //     "%g\t"
-        //     "%g\n",
-        //     calibratedAccelerationData[0],
-        //     calibratedAccelerationData[1],
-        //     calibratedAccelerationData[2],
-        //     calibratedGyroData[0],
-        //     calibratedGyroData[1],
-        //     calibratedGyroData[2]);
-        if (rawGyroData[3] > 10)
-        {
-            isAngleLarge = true;
-            lv_msgbox_set_text(mbox2, "angle warning");
-        }
-        else if (rawGyroData[3] <= 10 && isAngleLarge)
-        {
-            isAngleLarge = false;
-            lv_msgbox_set_text(mbox2, " ");
-        }
-    }
-}
 
 void InputChange(int changes)
 {
+    switch(changes)
+    {
+        case 50:
+            playNote(frequency[4], 100);
+            break;
+        case 10:
+            playNote(frequency[5], 100);
+            break;
+        case 1:
+            playNote(frequency[6], 100);
+            break;
+    }
     inputChange += changes;
+    char str[40];
     sprintf(str, "%d", inputChange);
     char temp[80] = "changes:";
     strcat(temp, str);
-    lv_msgbox_set_text(mbox1, temp);
+    // lv_msgbox_set_text(mbox1, temp);
+    lv_demo_items();
 }
 
 void playNote(int freq, int duration)
@@ -315,16 +261,15 @@ static void event_handler_btn1(lv_obj_t *obj, lv_event_t event)
         }
         inputChange -= itemPrice[0];
         itemNumbers[0] -= 1;
-        cs = 1;
-        cs = 0;
-        spi.touch_WriteData(itemPrice[0]);
+        // cs = 1;
+        // cs = 0;
+        // spi.touch_WriteData(itemPrice[0]);
         char temp[100] = "Cola change: ";
         sprintf(str, "%d", inputChange);
         strcat(temp, str);
         lv_msgbox_set_text(mbox1, temp);
         printf("cola change: %d\n", inputChange);
         playNote(131, 100);
-        inputChange = 0;
         sprintf(str, "%d", itemPrice[0]);
         sprintf(str1, "%d", itemNumbers[0]);
         char ch1[100] = "Cola price: ";
@@ -332,7 +277,9 @@ static void event_handler_btn1(lv_obj_t *obj, lv_event_t event)
         strcat(ch1, str);
         strcat(ch1, ch2);
         strcat(ch1, str1);
-        lv_label_set_text(label1, ch1);
+        // lv_label_set_text(label1, ch1);
+        lv_demo_items();
+        inputChange = 0;
     }
 }
 
@@ -349,16 +296,15 @@ static void event_handler_btn2(lv_obj_t *obj, lv_event_t event)
         }
         inputChange -= itemPrice[1];
         itemNumbers[1] -= 1;
-        cs = 1;
-        cs = 0;
-        spi.touch_WriteData(itemPrice[1]);
+        // cs = 1;
+        // cs = 0;
+        // spi.touch_WriteData(itemPrice[1]);
         char temp[100] = "7up change: ";
         sprintf(str, "%d", inputChange);
         strcat(temp, str);
         lv_msgbox_set_text(mbox1, temp);
         printf("7up change: %d\n", inputChange);
         playNote(131, 100);
-        inputChange = 0;
         sprintf(str, "%d", itemPrice[1]);
         sprintf(str1, "%d", itemNumbers[1]);
         char ch1[100] = "7up price: ";
@@ -366,7 +312,9 @@ static void event_handler_btn2(lv_obj_t *obj, lv_event_t event)
         strcat(ch1, str);
         strcat(ch1, ch2);
         strcat(ch1, str1);
-        lv_label_set_text(label2, ch3);
+        // lv_label_set_text(label2, ch1);
+        lv_demo_items();
+        inputChange = 0;
     }
 }
 
@@ -388,7 +336,7 @@ void lv_demo_items()
 
     btn1 = lv_btn_create(screenMain, NULL);
     lv_obj_set_event_cb(btn1, event_handler_btn1);
-    lv_obj_set_width(btn1, 140);
+    lv_obj_set_width(btn1, 240);
     lv_obj_set_height(btn1, 32);
     lv_obj_set_pos(btn1, 32, 100);
 
@@ -405,9 +353,9 @@ void lv_demo_items()
 
     btn2 = lv_btn_create(screenMain, NULL);
     lv_obj_set_event_cb(btn2, event_handler_btn2);
-    lv_obj_set_width(btn2, 140);
+    lv_obj_set_width(btn2, 240);
     lv_obj_set_height(btn2, 32);
-    lv_obj_set_pos(btn2, 200, 100);
+    lv_obj_set_pos(btn2, 32, 150);
 
     lv_obj_t *label2 = lv_label_create(btn2, NULL);
     sprintf(str, "%d", itemPrice[1]);
@@ -432,29 +380,69 @@ void lv_demo_items()
     mbox2 = lv_msgbox_create(screenMain, NULL);
     lv_obj_set_width(mbox2, 200);
     lv_obj_set_pos(mbox2, 0, 300);
+    if (isAngleLarge)
+        lv_msgbox_set_text(mbox2, "angle warning");
+    else
+        lv_msgbox_set_text(mbox2, " ");
 
     lv_scr_load(screenMain);
 }
+// void lv_demo_mbox2()
+// {
+//     mbox2 = lv_msgbox_create(screenMain, NULL);
+//     lv_obj_set_width(mbox2, 200);
+//     lv_obj_set_pos(mbox2, 0, 300);
+//     if (isAngleLarge)
+//         lv_msgbox_set_text(mbox2, "angle warning");
+//     else
+//         lv_msgbox_set_text(mbox2, " ");
+//     lv_scr_load(screenMain);
+// }
 
-// VendingMachineService_service vending_service;
 
+// int main()
+// {
+//     // Set desired properties (9600-8-N-1).
+//     machine.set_baud(9600);
+//     machine.set_format(
+//         /* bits */ 8,
+//         /* parity */ BufferedSerial::None,
+//         /* stop bit */ 1);
+
+//     // Set desired properties (9600-8-N-1).
+//     pc.set_baud(9600);
+//     pc.set_format(
+//         /* bits */ 8,
+//         /* parity */ BufferedSerial::None,
+//         /* stop bit */ 1);
+
+//     thread_slave.start(slave);
+//     // thread_master.start(master);
+// }
 int main()
 {
-    //     // uart_transport.setCrc16(&crc16);
+    // spi.format(8, 3);
+    // spi.frequency(1000000);
 
-    //     // printf("Initializing server.\n");
-    //     // rpc_server.setTransport(&uart_transport);
-    //     // rpc_server.setCodecFactory(&basic_cf);
-    //     // rpc_server.setMessageBufferFactory(&dynamic_mbf);
+    printf("LittlevGL DEMO\n");
+    display_init();
+    touchpad_init();
+    lv_demo_items();
+    // lv_demo_mbox2();
 
-    //     // // Add the led service to the server
-    //     // printf("Adding server.\n");
-    //     // rpc_server.addService(&vending_service);
+    Accelerometer accelerometer;
+    Gyro gyroscope;
+    double rawAccelerationData[3];
+    double calibratedAccelerationData[3];
+    double rawGyroData[3];
+    double calibratedGyroData[3];
 
-    //     // // Run the server. This should never exit
-    //     // printf("Running server.\n");
-    //     // rpc_server.run();
-    // Set desired properties (9600-8-N-1).
+    t.start(callback(&queue, &EventQueue::dispatch_forever));
+    keyboard0.fall(queue.event(InputChange, 50));
+    keyboard1.fall(queue.event(InputChange, 10));
+    keyboard2.fall(queue.event(InputChange, 1));
+
+        // Set desired properties (9600-8-N-1).
     machine.set_baud(9600);
     machine.set_format(
         /* bits */ 8,
@@ -469,5 +457,46 @@ int main()
         /* stop bit */ 1);
 
     thread_slave.start(slave);
-    thread_master.start(master);
+
+    while (true)
+    {
+        lv_ticker_func();
+        ThisThread::sleep_for(5ms);
+
+        if (machine.readable())
+        {
+            char receive;
+            machine.read(&receive, 1);
+            if (receive == 'c')
+            {
+                add_item_amount(0);
+                check_item_state();
+            }
+            else if (receive == 's')
+            {
+                add_item_amount(1);
+                check_item_state();
+            }
+            printf("%c\n", receive);
+        }
+        // Read raw gyroscope data
+        gyroscope.GetGyroSensor(rawGyroData);
+        // Calibrate gyroscope data
+        gyroscope.GetGyroCalibratedData(calibratedGyroData);
+
+        if (calibratedGyroData[2] > 1 && !isAngleLarge)
+        {
+            isAngleLarge = true;
+            lv_demo_items();
+            // lv_msgbox_set_text(mbox2, "angle warning");
+            
+        }
+        else if (calibratedGyroData[2] <= 1 && isAngleLarge)
+        {
+            isAngleLarge = false;
+           lv_demo_items();
+            // lv_msgbox_set_text(mbox2, " ");
+            
+        }
+    }
 }
