@@ -4,18 +4,11 @@ import serial
 import time
 import json
 
-# some JSON:
-with open('books.json', 'r') as file:
-    content = file.read()
-
-# parse x:
-y = json.loads(content)
-
 # the result is a Python dictionary:
 
 # send the waveform table to mbed
-serdev = 'COM3'
-s = serial.Serial(serdev)
+# serdev = 'COM3'
+# s = serial.Serial(serdev)
 print("Sending ...")
 
 # Blink LEDs on the connected erpc server
@@ -28,35 +21,42 @@ mcu_last_feedback = ' '
 
 def Input_ID():
     student_ID = input('input ID: ')
-    s.write(b'1\n')
-    s.write(student_ID.to_bytes(4, 'little'))
+    # s.write(b'1\n')
+    # s.write(student_ID.to_bytes(4, 'little'))
 
 Input_ID()
 # s.write(b'5\n')
+
+# some JSON:
+with open('books.json', 'r') as file:
+    content = file.read()
+
+# parse x:
+y = json.loads(content)
 
 for book in y:
     value_of_b = book["title"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["author"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["country"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["language"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["year"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["pages"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["imageLink"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
-    value_of_b = book["title"]
+    value_of_b = book["link"]
     s.write(value_of_b.encode('utf-8'))
     print(value_of_b)
 
