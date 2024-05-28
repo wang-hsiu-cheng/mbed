@@ -6,10 +6,10 @@
 #include "gatt_server_process.h"
 #include "mbed-trace/mbed_trace.h"
 
-mbed::DigitalOut led1(LED1, 1);
-mbed::DigitalOut led2(LED2, 1);
-mbed::DigitalOut led3(LED3, 1);
-mbed::DigitalOut *leds[] = {&led1, &led2, &led3};
+// mbed::DigitalOut led1(LED1, 1);
+// mbed::DigitalOut led2(LED2, 1);
+// mbed::DigitalOut led3(LED3, 1);
+// mbed::DigitalOut *leds[] = {&led1, &led2, &led3};
 
 class GattServerDemo : ble::GattServer::EventHandler
 {
