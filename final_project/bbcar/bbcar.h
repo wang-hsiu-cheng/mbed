@@ -18,16 +18,22 @@ class BBCar{
 
 		// turn left/right with a factor of speed
 		void turn( double speed, double factor );
+        void turnAround(double speed, bool direction);
 
 		// limit the value by max and min
 		float clamp( float value, float max, float min );
 		int turn2speed( float turn );
         
         //feedbackservo
+        double Dest();
         void feedbackWheel();
+        void initPathDist();
         void goCertainDistance(float distance);
-		int checkDistance(int errorDistance_Range);
-		
+		int checkDistance(float errorDistance_Range);
+        double path = 0;
+    private:
+        double initAngle0;
+        double initAngle1;
 };
 
 #endif

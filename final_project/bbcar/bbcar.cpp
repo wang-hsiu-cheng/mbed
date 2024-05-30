@@ -46,6 +46,21 @@ void BBCar::turn( double speed, double factor ){
     servo1.set_speed(-speed);
 
 }
+void BBCar::turnAround(double speed, bool direction)
+{
+    if (direction)
+    {
+        servo0.set_factor(1);
+        servo1.set_factor(-1);
+    }
+    else 
+    {
+        servo0.set_factor(-1);
+        servo1.set_factor(1);
+    }
+    servo0.set_speed(speed);
+    servo1.set_speed(-speed);
+}
 
 float BBCar::clamp( float value, float max, float min ){
     if (value > max) return max;
@@ -57,21 +72,32 @@ int BBCar::turn2speed( float turn ){
     return 25+abs(25*turn);
 }
 
+void BBCar::initPathDist()
+{
+    initAngle0 = servo0.angle;
+    initAngle1 = servo1.angle;
+
+}
+double BBCar::Dest()
+{
+    return  (-(servo0.angle - initAngle0) / 360 * (6.7 * 3.1416) + (servo1.angle - initAngle1) / 360 * (6.7 * 3.1416)) / 2;
+}
 void BBCar::feedbackWheel(){
     servo0.feedback360();
     servo1.feedback360();
 }
 
 void BBCar::goCertainDistance(float distance){
-    servo0.targetAngle = (int)(distance*360/(6.5*3.14)) + servo0.angle;
-    servo1.targetAngle = (int)(-distance*360/(6.5*3.14)) + servo1.angle;  
+    servo0.targetAngle = (int)(distance*360/(6.7*3.1416)) + servo0.angle;
+    servo1.targetAngle = (int)(-distance*360/(6.7*3.1416)) + servo1.angle;  
 }
 
-int BBCar::checkDistance(int errorDistance_Range){
-    int speed, offset;                                                              // Control system variables
+int BBCar::checkDistance(float errorDistance_Range){
+    int speed, offset = 0;                                                              // Control system variables
     float errorDistance, factor=1;                 
 
-    errorDistance = (servo0.targetAngle - servo0.angle)*6.5*3.14/360;       // Calculate error
+    errorDistance = (servo0.targetAngle + servo0.angle)*6.7*3.1416/360;       // Calculate error
+    printf("error dist: %f", errorDistance);
     
     speed = int(errorDistance);
 
@@ -87,7 +113,14 @@ int BBCar::checkDistance(int errorDistance_Range){
     servo0.set_speed(speed + offset);  
     servo1.set_speed(-speed - offset);
 
-    if ( abs(errorDistance) > (int)(errorDistance_Range) )
-        return 1;   
-    else return 0;
+    if ( abs(errorDistance) > errorDistance_Range )
+    {
+        printf("runnung\n");
+        return 1; 
+    }  
+    else 
+    {
+        printf("stop\n");
+        return 0;
+    }
 }
