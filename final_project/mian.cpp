@@ -30,11 +30,13 @@ PwmOut servo0_c(D11), servo1_c(D12);
 BBCar car(servo0_c, servo0_f, servo1_c, servo1_f, servo_ticker, servo_feedback_ticker);
 InterruptIn button(BUTTON1);
 DigitalInOut pin8(D8);
-BusInOut qti_pin(D4,D5,D6,D7);
+BusInOut qti_pin(D4, D5, D6, D7);
+int pattern = 0b0110;
+int hint = 0;
 int level = 0;
 double traveledPath = 0;
 
-void feedbackWheel()
+void FeedbackWheel()
 {
     traveledPath = car.Dest();
     printf("path: %f\n", traveledPath);
@@ -70,88 +72,146 @@ void GoCertainDistance(float distance)
     ThisThread::sleep_for(3s);
     printf("error distance = %f\n", (car.servo0.targetAngle - car.servo0.angle) * 6.5 * 3.14 / 360);
 }
+void Parking()
+{
+    printf("start parking\n");
+    car.turnAround();
+    GoCertainDistance(-10);
+    ThisThread::sleep_for(3s);
+    GoCertainDistance(20);
+    printf("stop parking\n");
+    return;
+}
 void QTInavigation()
 {
     parallax_qti qti1(qti_pin);
-    int pattern = 0b0110;
     int lastPattern = 0b0110;
-    bool isTurnEnd = true;
+    bool isTurning = false;
     car.goStraight(50);
 
     while (level < 10)
     {
-        int hint;
         lastPattern = pattern;
         pattern = qti1;
         // printf("%u\n",pattern);
-        // std::cout << pattern << std::endl;
         if (pattern != 0b0000)
-            isTurnEnd = true;
-        switch (pattern) {
-            case 0b1000: car.turn(40, 0.05); printf("1000\n"); break;
-            case 0b1100: car.turn(55, 0.35); printf("1100\n"); break;
-            case 0b0100: car.turn(60, 0.55); printf("0100\n"); break;
-            case 0b0110: car.turn(65, 1); printf("0110\n"); break;
-            case 0b0010: car.turn(60, -0.55); printf("0010\n"); break;
-            case 0b0011: car.turn(55, -0.35); printf("0011\n"); break;
-            case 0b0001: car.turn(40, -0.05); printf("0001\n"); break;
-            case 0b0111: hint = 0b0111; printf("0111\n"); break;
-            case 0b1110: hint = 0b0111; printf("0111\n"); break;
-            case 0b1111: 
+            isTurning = false;
+        switch (pattern)
+        {
+        case 0b1000:
+            car.turn(50, 0.05);
+            printf("1000\n");
+            break;
+        case 0b1100:
+            car.turn(55, 0.35);
+            printf("1100\n");
+            break;
+        case 0b0100:
+            car.turn(60, 0.55);
+            printf("0100\n");
+            break;
+        case 0b0110:
+            car.turn(65, 1);
+            printf("0110\n");
+            break;
+        case 0b0010:
+            car.turn(60, -0.55);
+            printf("0010\n");
+            break;
+        case 0b0011:
+            car.turn(55, -0.35);
+            printf("0011\n");
+            break;
+        case 0b0001:
+            car.turn(50, -0.05);
+            printf("0001\n");
+            break;
+        case 0b0111:
+            hint = 1; // turn right
+            printf("0111\n");
+            break;
+        case 0b1110:
+            if (hint == 1)
+                hint = 4; // parking
+            else
+                hint = 2; // turn left
+            printf("1110\n");
+            break;
+        case 0b1001:
+            hint = 0; // reset the hint, do nothing
+            printf("1001\n");
+            break;
+        case 0b1111:
+        {
+            switch (hint)
             {
-                if (hint == 0b0111)
-                    {car.turn(50, 0.05); printf("0111\n");}
-                else if (hint == 0b1110)
-                    {car.turn(50, -0.05); printf("1110\n");}
-                else 
-                    car.stop(); printf("1111\n"); break;
-            }
-            default: {
-                if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
-                    car.turnAround(30, false);
-                else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
-                    car.turnAround(30, true);
-                isTurnEnd = false;
+            case 1:
+                car.turn(50, 0.05);
+                break;
+            case 2:
+                car.turn(50, -0.05);
+                break;
+            case 3:
                 car.stop();
+                break;
+            case 4:
+                Parking();
+                break;
+            default:
+                hint = 3; // stop
+                break;
             }
+            printf("1111\n");
+            break;
         }
-        if (LaserPingNavigation() || !isTurnEnd)
+        default:
+            if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
+                car.turnAround(30, false);
+            else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
+                car.turnAround(30, true);
+            isTurning = true;
+            car.stop();
+        }
+        if (LaserPingNavigation() || isTurning)
         {
             car.turnAround(50, 0);
-             isTurnEnd = false;
-            printf("turn around\n");
+            isTurning = true;
+            // printf("turn around\n");
         }
         ThisThread::sleep_for(10ms);
     }
     return;
 }
-void AvoidWall()
+
+class CarReturnService : public ble::GattServer::EventHandler
 {
-
-}
-
-class ClockService : public ble::GattServer::EventHandler {
 public:
-    ClockService() :
-        _hour_char("0000b391-0000-1000-8000-00805f9b34fb", 0),
-        _minute_char("0000b392-0000-1000-8000-00805f9b34fb", 0),
-        _second_char("0000b393-0000-1000-8000-00805f9b34fb", 0),
-        _clock_service(
-            /* uuid */ "0000b390-0000-1000-8000-00805f9b34fb",
-            /* characteristics */ _clock_characteristics,
-            /* numCharacteristics */ sizeof(_clock_characteristics) /
-                                     sizeof(_clock_characteristics[0])
-        )
+    CarReturnService() : _distaince_cm("0000b391-0000-1000-8000-00805f9b34fb", 0),
+                         _qti_pattern("0000b392-0000-1000-8000-00805f9b34fb", 0),
+                         _qti_hint("0000b393-0000-1000-8000-00805f9b34fb", 0),
+                         _accelerometer_0("0000b394-0000-1000-8000-00805f9b34fb", 0),
+                         _accelerometer_1("0000b395-0000-1000-8000-00805f9b34fb", 0),
+                         _accelerometer_2("0000b396-0000-1000-8000-00805f9b34fb", 0),
+                         _car_return_service(
+                             /* uuid */ "0000b390-0000-1000-8000-00805f9b34fb",
+                             /* characteristics */ _carReturn_characteristics,
+                             /* numCharacteristics */ sizeof(_carReturn_characteristics) / sizeof(_carReturn_characteristics[0]))
     {
         /* update internal pointers (value, descriptors and characteristics array) */
-        _clock_characteristics[0] = &_hour_char;
-        _clock_characteristics[1] = &_minute_char;
-        _clock_characteristics[2] = &_second_char;
+        _carReturn_characteristics[0] = &_distaince_cm;
+        _carReturn_characteristics[1] = &_qti_pattern;
+        _carReturn_characteristics[2] = &_qti_hint;
+        _carReturn_characteristics[3] = &_accelerometer_0;
+        _carReturn_characteristics[4] = &_accelerometer_1;
+        _carReturn_characteristics[5] = &_accelerometer_2;
 
         /* setup authorization handlers */
-        _hour_char.setWriteAuthorizationCallback(this, &ClockService::authorize_client_write);
-        _minute_char.setWriteAuthorizationCallback(this, &ClockService::authorize_client_write);
-        _second_char.setWriteAuthorizationCallback(this, &ClockService::authorize_client_write);
+        _distaince_cm.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
+        _qti_pattern.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
+        _qti_hint.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
+        _accelerometer_0.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
+        _accelerometer_1.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
+        _accelerometer_2.setWriteAuthorizationCallback(this, &CarReturnService::authorize_client_write);
     }
 
     void start(BLE &ble, events::EventQueue &event_queue)
@@ -160,9 +220,10 @@ public:
         _event_queue = &event_queue;
 
         printf("Registering demo service\r\n");
-        ble_error_t err = _server->addService(_clock_service);
+        ble_error_t err = _server->addService(_car_return_service);
 
-        if (err) {
+        if (err)
+        {
             printf("Error %u during demo service registration.\r\n", err);
             return;
         }
@@ -170,19 +231,19 @@ public:
         /* register handlers */
         _server->setEventHandler(this);
 
-        printf("clock service registered\r\n");
-        printf("service handle: %u\r\n", _clock_service.getHandle());
-        printf("hour characteristic value handle %u\r\n", _hour_char.getValueHandle());
-        printf("minute characteristic value handle %u\r\n", _minute_char.getValueHandle());
-        printf("second characteristic value handle %u\r\n", _second_char.getValueHandle());
+        printf("car return service registered\r\n");
+        printf("service handle: %u\r\n", _car_return_service.getHandle());
+        printf("distance handle %u\r\n", _distaince_cm.getValueHandle());
+        printf("qti pattern handle %u\r\n", _qti_pattern.getValueHandle());
+        printf("qti hint handle %u\r\n", _qti_hint.getValueHandle());
 
-        // event_queue.call_every(100ms, ClockService::updateDate);
-        _event_queue->call_every(100ms, callback(this, &ClockService::updateDate));
+        // event_queue.call_every(100ms, CarReturnService::updateDate);
+        _event_queue->call_every(100ms, callback(this, &CarReturnService::updateDate));
     }
 
     /* GattServer::EventHandler */
-      private:
-          /**
+private:
+    /**
      * Handler called when a notification or an indication has been sent.
      */
     void onDataSent(const GattDataSentCallbackParams &params) override
@@ -196,46 +257,14 @@ public:
     void onDataWritten(const GattWriteCallbackParams &params) override
     {
         printf("data written:\r\n");
-        printf("connection handle: %u\r\n", params.connHandle);
-        printf("attribute handle: %u", params.handle);
-        if (params.handle == _hour_char.getValueHandle()) {
-            printf(" (hour characteristic)\r\n");
-        } else if (params.handle == _minute_char.getValueHandle()) {
-            printf(" (minute characteristic)\r\n");
-        } else if (params.handle == _second_char.getValueHandle()) {
-            printf(" (second characteristic)\r\n");
-        } else {
-            printf("\r\n");
-        }
-        printf("write operation: %u\r\n", params.writeOp);
-        printf("offset: %u\r\n", params.offset);
-        printf("length: %u\r\n", params.len);
-        printf("data: ");
+    }
 
-        for (size_t i = 0; i < params.len; ++i) {
-            printf("%02X", params.data[i]);
-        }
-
-        printf("\r\n");
-          }
-
-          /**
-           * Handler called after an attribute has been read.
+    /**
+     * Handler called after an attribute has been read.
      */
     void onDataRead(const GattReadCallbackParams &params) override
     {
         printf("data read:\r\n");
-        printf("connection handle: %u\r\n", params.connHandle);
-        printf("attribute handle: %u", params.handle);
-        if (params.handle == _hour_char.getValueHandle()) {
-            printf(" (hour characteristic)\r\n");
-        } else if (params.handle == _minute_char.getValueHandle()) {
-            printf(" (minute characteristic)\r\n");
-        } else if (params.handle == _second_char.getValueHandle()) {
-            printf(" (second characteristic)\r\n");
-        } else {
-            printf("\r\n");
-        }
     }
 
     /**
@@ -281,26 +310,29 @@ private:
     {
         printf("characteristic %u write authorization\r\n", e->handle);
 
-        if (e->offset != 0) {
-            printf("Error invalid offset\r\n");
-            e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_OFFSET;
-            return;
-        }
+        // if (e->offset != 0)
+        // {
+        //     printf("Error invalid offset\r\n");
+        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_OFFSET;
+        //     return;
+        // }
 
-        if (e->len != 1) {
-            printf("Error invalid len\r\n");
-            e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_ATT_VAL_LENGTH;
-            return;
-        }
+        // if (e->len != 1)
+        // {
+        //     printf("Error invalid len\r\n");
+        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_ATT_VAL_LENGTH;
+        //     return;
+        // }
 
-        if ((e->data[0] >= 60) ||
-            ((e->data[0] >= 24) && (e->handle == _hour_char.getValueHandle()))) {
-            printf("Error invalid data\r\n");
-            e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_WRITE_NOT_PERMITTED;
-            return;
-        }
+        // if ((e->data[0] >= 60) ||
+        //     ((e->data[0] >= 24) && (e->handle == _distaince_cm.getValueHandle())))
+        // {
+        //     printf("Error invalid data\r\n");
+        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_WRITE_NOT_PERMITTED;
+        //     return;
+        // }
 
-        e->authorizationReply = AUTH_CALLBACK_REPLY_SUCCESS;
+        // e->authorizationReply = AUTH_CALLBACK_REPLY_SUCCESS;
     }
 
     /**
@@ -313,30 +345,31 @@ private:
         // double rawAccelerationData[3];
         // double calibratedAccelerationData[3];
         uint8_t second = 0;
-        ble_error_t err = _second_char.get(*_server, second);
-        err = _hour_char.get(*_server, second);
-        err = _hour_char.get(*_server, second);
-        if (err) {
+        ble_error_t err = _qti_hint.get(*_server, second);
+        err = _distaince_cm.get(*_server, second);
+        err = _distaince_cm.get(*_server, second);
+        if (err)
+        {
             printf("read of the second value returned error %u\r\n", err);
             return;
         }
 
         // accelerometer.GetAcceleromterCalibratedData(calibratedAccelerationData);
 
-        err = _second_char.set(*_server, traveledPath);
-        err = _minute_char.set(*_server, traveledPath);
-        err = _hour_char.set(*_server, traveledPath);
-        if (err) {
-            printf("write of the second value returned error %u\r\n", err);
-            return;
-        }
-
+        err = _qti_hint.set(*_server, traveledPath);
+        err = _qti_pattern.set(*_server, pattern);
+        err = _distaince_cm.set(*_server, hint);
+        // if (err)
+        // {
+        //     printf("write of the second value returned error %u\r\n", err);
+        //     return;
+        // }
     }
 
-
 private:
-template<typename T>
-    class ReadWriteNotifyIndicateCharacteristic : public GattCharacteristic {
+    template <typename T>
+    class ReadWriteNotifyIndicateCharacteristic : public GattCharacteristic
+    {
     public:
         /**
          * Construct a characteristic that can be read or written and emit
@@ -345,21 +378,20 @@ template<typename T>
          * @param[in] uuid The UUID of the characteristic.
          * @param[in] initial_value Initial value contained by the characteristic.
          */
-        ReadWriteNotifyIndicateCharacteristic(const UUID & uuid, const T& initial_value) :
-            GattCharacteristic(
-                /* UUID */ uuid,
-                /* Initial value */ &_value,
-                /* Value size */ sizeof(_value),
-                /* Value capacity */ sizeof(_value),
-                /* Properties */ GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_READ |
-                                 GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_WRITE |
-                                 GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY |
-                                 GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_INDICATE,
-                /* Descriptors */ nullptr,
-                /* Num descriptors */ 0,
-                /* variable len */ false
-            ),
-            _value(initial_value) {
+        ReadWriteNotifyIndicateCharacteristic(const UUID &uuid, const T &initial_value) : GattCharacteristic(
+                                                                                              /* UUID */ uuid,
+                                                                                              /* Initial value */ &_value,
+                                                                                              /* Value size */ sizeof(_value),
+                                                                                              /* Value capacity */ sizeof(_value),
+                                                                                              /* Properties */ GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_READ |
+                                                                                                  GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_WRITE |
+                                                                                                  GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_NOTIFY |
+                                                                                                  GattCharacteristic::BLE_GATT_CHAR_PROPERTIES_INDICATE,
+                                                                                              /* Descriptors */ nullptr,
+                                                                                              /* Num descriptors */ 0,
+                                                                                              /* variable len */ false),
+                                                                                          _value(initial_value)
+        {
         }
 
         /**
@@ -371,7 +403,7 @@ template<typename T>
          *
          * @return BLE_ERROR_NONE in case of success or an appropriate error code.
          */
-        ble_error_t get(GattServer &server, T& dst) const
+        ble_error_t get(GattServer &server, T &dst) const
         {
             uint16_t value_length = sizeof(dst);
             return server.read(getValueHandle(), &dst, &value_length);
@@ -394,16 +426,19 @@ template<typename T>
         uint8_t _value;
     };
 
-    private:
+private:
     GattServer *_server = nullptr;
     events::EventQueue *_event_queue = nullptr;
 
-    GattService _clock_service;
-    GattCharacteristic* _clock_characteristics[3];
+    GattService _car_return_service;
+    GattCharacteristic *_carReturn_characteristics[3];
 
-    ReadWriteNotifyIndicateCharacteristic<uint8_t> _hour_char;
-    ReadWriteNotifyIndicateCharacteristic<uint8_t> _minute_char;
-    ReadWriteNotifyIndicateCharacteristic<uint8_t> _second_char;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _distaince_cm;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _qti_pattern;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _qti_hint;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _accelerometer_0;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _accelerometer_1;
+    ReadWriteNotifyIndicateCharacteristic<uint8_t> _accelerometer_2;
 };
 
 void BLEsend()
@@ -412,13 +447,13 @@ void BLEsend()
 
     BLE &ble = BLE::Instance();
     events::EventQueue event_queue;
-    ClockService demo_service;
+    CarReturnService demo_service;
 
     /* this process will handle basic ble setup and advertising for us */
     GattServerProcess ble_process(event_queue, ble);
 
     /* once it's done it will let us continue with our demo */
-    ble_process.on_init(callback(&demo_service, &ClockService::start));
+    ble_process.on_init(callback(&demo_service, &CarReturnService::start));
 
     ble_process.start();
 }
@@ -429,21 +464,19 @@ void Car()
 
     // QTI Line Following Kit
     QTInavigation();
-
-    // avoid wall
-    AvoidWall();
 }
 int main()
 {
-    // thread.start(BLEsend);
-    thread1.start(Car);
-   // simple test
-//    car.goStraight(200);
-//    ThisThread::sleep_for(5s);
-//    car.stop();
-//    ThisThread::sleep_for(5s);
+    // simple test
+    //    car.goStraight(200);
+    //    ThisThread::sleep_for(5s);
+    //    car.stop();
+    //    ThisThread::sleep_for(5s);
 
     car.initPathDist();
     t.start(callback(&servo_queue, &EventQueue::dispatch_forever));
-    servo_queue.call_every(1s, feedbackWheel);
+    servo_queue.call_every(1s, FeedbackWheel);
+
+    thread.start(BLEsend);
+    thread1.start(Car);
 }
