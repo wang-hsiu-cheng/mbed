@@ -48,7 +48,7 @@ int LaserPingNavigation()
     {
         led1 = 1;
         printf("has\n");
-        car.stop();
+        // car.stop();
         return 1;
     }
     else
@@ -75,8 +75,8 @@ void GoCertainDistance(float distance)
 void Parking()
 {
     printf("start parking\n");
-    car.turnAround();
-    GoCertainDistance(-10);
+    car.turnAround(50, true);
+    GoCertainDistance(-15);
     ThisThread::sleep_for(3s);
     GoCertainDistance(20);
     printf("stop parking\n");
@@ -87,9 +87,10 @@ void QTInavigation()
     parallax_qti qti1(qti_pin);
     int lastPattern = 0b0110;
     bool isTurning = false;
+    bool canPark = true;
     car.goStraight(50);
 
-    while (level < 10)
+    while (1)
     {
         lastPattern = pattern;
         pattern = qti1;
@@ -99,11 +100,11 @@ void QTInavigation()
         switch (pattern)
         {
         case 0b1000:
-            car.turn(50, 0.05);
+            car.turn(50, 0.1);
             printf("1000\n");
             break;
         case 0b1100:
-            car.turn(55, 0.35);
+            car.turn(55, 0.3);
             printf("1100\n");
             break;
         case 0b0100:
@@ -119,11 +120,11 @@ void QTInavigation()
             printf("0010\n");
             break;
         case 0b0011:
-            car.turn(55, -0.35);
+            car.turn(55, -0.3);
             printf("0011\n");
             break;
         case 0b0001:
-            car.turn(50, -0.05);
+            car.turn(50, -0.1);
             printf("0001\n");
             break;
         case 0b0111:
@@ -131,18 +132,20 @@ void QTInavigation()
             printf("0111\n");
             break;
         case 0b1110:
-            if (hint == 1)
-                hint = 4; // parking
-            else
-                hint = 2; // turn left
+            hint = 2; // turn left
             printf("1110\n");
             break;
         case 0b1001:
-            hint = 0; // reset the hint, do nothing
+            car.turn(65, 1);
+            if (canPark)
+                hint = 4;
+            else
+                hint = 3;
             printf("1001\n");
             break;
         case 0b1111:
         {
+            // level++;
             switch (hint)
             {
             case 1:
@@ -156,9 +159,11 @@ void QTInavigation()
                 break;
             case 4:
                 Parking();
+                canPark = false;
+                hint = 0;
                 break;
             default:
-                hint = 3; // stop
+                // hint = 3; // stop
                 break;
             }
             printf("1111\n");
@@ -166,15 +171,15 @@ void QTInavigation()
         }
         default:
             if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
-                car.turnAround(30, false);
-            else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
                 car.turnAround(30, true);
+            else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
+                car.turnAround(30, false);
             isTurning = true;
-            car.stop();
+            // car.stop();
         }
-        if (LaserPingNavigation() || isTurning)
+        if (LaserPingNavigation())
         {
-            car.turnAround(50, 0);
+            car.turnAround(50, true);
             isTurning = true;
             // printf("turn around\n");
         }
@@ -477,6 +482,6 @@ int main()
     t.start(callback(&servo_queue, &EventQueue::dispatch_forever));
     servo_queue.call_every(1s, FeedbackWheel);
 
-    thread.start(BLEsend);
     thread1.start(Car);
+    thread.start(BLEsend);
 }
