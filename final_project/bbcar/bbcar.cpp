@@ -85,8 +85,12 @@ void BBCar::initPathDist()
     initAngle0 = servo0.angle;
     initAngle1 = servo1.angle;
 }
-double BBCar::Dest()
+double BBCar::PathLength(float deltaTime)
 {
+    deltaVelocity0 = -(servo0.angle - lastAngle0) / 360 * (6.7 * 3.1416) * (deltaTime / 1000);
+    deltaVelocity1 = (servo1.angle - lastAngle1) / 360 * (6.7 * 3.1416) * (deltaTime / 1000);
+    lastAngle0 = servo0.angle;
+    lastAngle1 = servo1.angle;
     return (-(servo0.angle - initAngle0) / 360 * (6.7 * 3.1416) + (servo1.angle - initAngle1) / 360 * (6.7 * 3.1416)) / 2;
 }
 void BBCar::feedbackWheel()
