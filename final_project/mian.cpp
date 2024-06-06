@@ -1,8 +1,8 @@
 #include "mbed.h"
 #include "bbcar.h"
 #include "drivers/DigitalOut.h"
+#include "params.h"
 
-#include "BLEcommunicate.cpp"
 #include <cstdint>
 #include <stdint.h>
 #include <events/mbed_events.h>
@@ -31,15 +31,13 @@ BBCar car(servo0_c, servo0_f, servo1_c, servo1_f, servo_ticker, servo_feedback_t
 InterruptIn button(BUTTON1);
 DigitalInOut pin8(D8);
 BusInOut qti_pin(D4, D5, D6, D7);
-int pattern = 0b0110;
-int hint = 0;
-int level = 0;
-double traveledPath = 0;
+// int pattern = 0b0110;
+// int hint = 0;
+// double traveledPath = 0;
 
 void FeedbackWheel()
 {
-    traveledPath = car.Dest();
-    printf("path: %f\n", traveledPath);
+    traveledPath = car.PathLength(100);
 }
 int LaserPingNavigation()
 {
@@ -47,38 +45,36 @@ int LaserPingNavigation()
     if ((float)ping1 < 20)
     {
         led1 = 1;
-        printf("has\n");
-        // car.stop();
         return 1;
     }
     else
     {
         led1 = 0;
-        printf("no\n");
         return 0;
     }
 }
-void GoCertainDistance(float distance)
+void GoCertainDistance(int distance)
 {
     car.goCertainDistance(distance); // 6.5*3.14*3
 
-    while (car.checkDistance(0.5))
+    while (car.checkDistance(1))
     {
-        // if (LaserPingNavigation())
-        //     break;
         ThisThread::sleep_for(500ms);
     }
     car.stop();
     ThisThread::sleep_for(3s);
-    printf("error distance = %f\n", (car.servo0.targetAngle - car.servo0.angle) * 6.5 * 3.14 / 360);
 }
 void Parking()
 {
     printf("start parking\n");
     car.turnAround(50, true);
-    GoCertainDistance(-15);
+    ThisThread::sleep_for(2800ms);
+    car.goStraight(-50);
+    ThisThread::sleep_for(1500ms);
+    car.stop();
     ThisThread::sleep_for(3s);
-    GoCertainDistance(20);
+    car.goStraight(50);
+    ThisThread::sleep_for(500ms);
     printf("stop parking\n");
     return;
 }
@@ -86,6 +82,7 @@ void QTInavigation()
 {
     parallax_qti qti1(qti_pin);
     int lastPattern = 0b0110;
+    int i = 0, j = 0;
     bool isTurning = false;
     bool canPark = true;
     car.goStraight(50);
@@ -112,7 +109,7 @@ void QTInavigation()
             printf("0100\n");
             break;
         case 0b0110:
-            car.turn(65, 1);
+            car.goStraight(65);
             printf("0110\n");
             break;
         case 0b0010:
@@ -128,15 +125,25 @@ void QTInavigation()
             printf("0001\n");
             break;
         case 0b0111:
-            hint = 1; // turn right
+            i++;
+            if (i > 20)
+            {
+                i = 0;
+                hint = 1;
+            }
             printf("0111\n");
             break;
         case 0b1110:
-            hint = 2; // turn left
+            j++;
+            if (j > 20)
+            {
+                j = 0;
+                hint = 2;
+            }
             printf("1110\n");
             break;
         case 0b1001:
-            car.turn(65, 1);
+            car.goStraight(50);
             if (canPark)
                 hint = 4;
             else
@@ -145,43 +152,51 @@ void QTInavigation()
             break;
         case 0b1111:
         {
-            // level++;
             switch (hint)
             {
             case 1:
-                car.turn(50, 0.05);
+                printf("hint: 1\n");
+                car.turn(60, -0.05);
+                ThisThread::sleep_for(800ms); // wait until turn right finish
                 break;
             case 2:
-                car.turn(50, -0.05);
+                printf("hint: 2\n");
+                car.turn(60, 0.05);
+                ThisThread::sleep_for(800ms); // wait until turn left finish
                 break;
             case 3:
+                printf("hint: 3\n");
                 car.stop();
+                canPark = true;
                 break;
             case 4:
+                printf("hint: 4\n");
                 Parking();
                 canPark = false;
                 hint = 0;
                 break;
             default:
-                // hint = 3; // stop
+                printf("hint: 0\n");
+                car.goStraight(50);
                 break;
             }
             printf("1111\n");
             break;
         }
         default:
-            if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
-                car.turnAround(30, true);
-            else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
-                car.turnAround(30, false);
-            isTurning = true;
-            // car.stop();
+            // if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
+            //     car.turnAround(30, true);
+            // else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
+            //     car.turnAround(30, false);
+            // isTurning = true;
+
+            hint = 0;
+            break;
         }
-        if (LaserPingNavigation())
+        if (LaserPingNavigation()) // see the obstacle and turn around
         {
             car.turnAround(50, true);
             isTurning = true;
-            // printf("turn around\n");
         }
         ThisThread::sleep_for(10ms);
     }
@@ -270,6 +285,7 @@ private:
     void onDataRead(const GattReadCallbackParams &params) override
     {
         printf("data read:\r\n");
+        return;
     }
 
     /**
@@ -350,6 +366,9 @@ private:
         // double rawAccelerationData[3];
         // double calibratedAccelerationData[3];
         uint8_t second = 0;
+        uint8_t bag1 = 0;
+        uint8_t bagNumber = 0;
+        // traveledPath = car.PathLength(100);
         ble_error_t err = _qti_hint.get(*_server, second);
         err = _distaince_cm.get(*_server, second);
         err = _distaince_cm.get(*_server, second);
@@ -360,10 +379,11 @@ private:
         }
 
         // accelerometer.GetAcceleromterCalibratedData(calibratedAccelerationData);
-
-        err = _qti_hint.set(*_server, traveledPath);
+        bag1 = (int)traveledPath % 255;
+        bagNumber = (int)traveledPath / 255;
+        err = _qti_hint.set(*_server, bagNumber);
         err = _qti_pattern.set(*_server, pattern);
-        err = _distaince_cm.set(*_server, hint);
+        err = _distaince_cm.set(*_server, bag1);
         // if (err)
         // {
         //     printf("write of the second value returned error %u\r\n", err);
@@ -436,7 +456,7 @@ private:
     events::EventQueue *_event_queue = nullptr;
 
     GattService _car_return_service;
-    GattCharacteristic *_carReturn_characteristics[3];
+    GattCharacteristic *_carReturn_characteristics[6];
 
     ReadWriteNotifyIndicateCharacteristic<uint8_t> _distaince_cm;
     ReadWriteNotifyIndicateCharacteristic<uint8_t> _qti_pattern;
@@ -478,10 +498,21 @@ int main()
     //    car.stop();
     //    ThisThread::sleep_for(5s);
 
-    car.initPathDist();
-    t.start(callback(&servo_queue, &EventQueue::dispatch_forever));
-    servo_queue.call_every(1s, FeedbackWheel);
-
     thread1.start(Car);
-    thread.start(BLEsend);
+    mbed_trace_init();
+    t.start(callback(&servo_queue, &EventQueue::dispatch_forever));
+    servo_queue.call_every(100ms, FeedbackWheel);
+
+    BLE &ble = BLE::Instance();
+    events::EventQueue event_queue;
+    CarReturnService demo_service;
+
+    /* this process will handle basic ble setup and advertising for us */
+    GattServerProcess ble_process(event_queue, ble);
+
+    /* once it's done it will let us continue with our demo */
+    ble_process.on_init(callback(&demo_service, &CarReturnService::start));
+
+    car.initPathDist();
+    ble_process.start();
 }
