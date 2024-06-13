@@ -32,6 +32,8 @@ public:
     void initPathDist();
     void goCertainDistance(float distance);
     int checkDistance(float errorDistance_Range);
+    double deltaVelocity0 = 0;
+    double deltaVelocity1 = 0;
 
 private:
     double initAngle0;

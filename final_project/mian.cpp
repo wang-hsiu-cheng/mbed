@@ -1,7 +1,6 @@
 #include "mbed.h"
 #include "bbcar.h"
 #include "drivers/DigitalOut.h"
-#include "params.h"
 
 #include <cstdint>
 #include <stdint.h>
@@ -31,9 +30,9 @@ BBCar car(servo0_c, servo0_f, servo1_c, servo1_f, servo_ticker, servo_feedback_t
 InterruptIn button(BUTTON1);
 DigitalInOut pin8(D8);
 BusInOut qti_pin(D4, D5, D6, D7);
-// int pattern = 0b0110;
-// int hint = 0;
-// double traveledPath = 0;
+int pattern = 0b0110;
+int hint = 0;
+double traveledPath = 0;
 
 void FeedbackWheel()
 {
@@ -184,12 +183,6 @@ void QTInavigation()
             break;
         }
         default:
-            // if (lastPattern == 0b1000 || lastPattern == 0b1100 || lastPattern == 0b0100 || lastPattern == 0b1110)
-            //     car.turnAround(30, true);
-            // else if (lastPattern == 0b0001 || lastPattern == 0b0011 || lastPattern == 0b0010 || lastPattern == 0b0111)
-            //     car.turnAround(30, false);
-            // isTurning = true;
-
             hint = 0;
             break;
         }
@@ -330,30 +323,6 @@ private:
     void authorize_client_write(GattWriteAuthCallbackParams *e)
     {
         printf("characteristic %u write authorization\r\n", e->handle);
-
-        // if (e->offset != 0)
-        // {
-        //     printf("Error invalid offset\r\n");
-        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_OFFSET;
-        //     return;
-        // }
-
-        // if (e->len != 1)
-        // {
-        //     printf("Error invalid len\r\n");
-        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_INVALID_ATT_VAL_LENGTH;
-        //     return;
-        // }
-
-        // if ((e->data[0] >= 60) ||
-        //     ((e->data[0] >= 24) && (e->handle == _distaince_cm.getValueHandle())))
-        // {
-        //     printf("Error invalid data\r\n");
-        //     e->authorizationReply = AUTH_CALLBACK_REPLY_ATTERR_WRITE_NOT_PERMITTED;
-        //     return;
-        // }
-
-        // e->authorizationReply = AUTH_CALLBACK_REPLY_SUCCESS;
     }
 
     /**
@@ -361,34 +330,21 @@ private:
      */
     void updateDate(void)
     {
-        // double traveledPath = UpdateDate();
-        // Accelerometer accelerometer;
-        // double rawAccelerationData[3];
-        // double calibratedAccelerationData[3];
         uint8_t second = 0;
         uint8_t bag1 = 0;
         uint8_t bagNumber = 0;
-        // traveledPath = car.PathLength(100);
+        car.PathLength(100);
         ble_error_t err = _qti_hint.get(*_server, second);
         err = _distaince_cm.get(*_server, second);
         err = _distaince_cm.get(*_server, second);
-        if (err)
-        {
-            printf("read of the second value returned error %u\r\n", err);
-            return;
-        }
 
-        // accelerometer.GetAcceleromterCalibratedData(calibratedAccelerationData);
         bag1 = (int)traveledPath % 255;
         bagNumber = (int)traveledPath / 255;
-        err = _qti_hint.set(*_server, bagNumber);
-        err = _qti_pattern.set(*_server, pattern);
-        err = _distaince_cm.set(*_server, bag1);
-        // if (err)
-        // {
-        //     printf("write of the second value returned error %u\r\n", err);
-        //     return;
-        // }
+        _qti_hint.set(*_server, bag1);
+        _qti_pattern.set(*_server, pattern);
+        _distaince_cm.set(*_server, bagNumber);
+        _accelerometer_0.set(*_server, car.deltaVelocity0 * 10);
+        _accelerometer_1.set(*_server, car.deltaVelocity1 * 10);
     }
 
 private:
@@ -484,35 +440,15 @@ void BLEsend()
 }
 void Car()
 {
-    // go certain distance
-    // GoCertainDistance(10);
-
-    // QTI Line Following Kit
     QTInavigation();
 }
 int main()
 {
-    // simple test
-    //    car.goStraight(200);
-    //    ThisThread::sleep_for(5s);
-    //    car.stop();
-    //    ThisThread::sleep_for(5s);
-
     thread1.start(Car);
-    mbed_trace_init();
+
     t.start(callback(&servo_queue, &EventQueue::dispatch_forever));
     servo_queue.call_every(100ms, FeedbackWheel);
 
-    BLE &ble = BLE::Instance();
-    events::EventQueue event_queue;
-    CarReturnService demo_service;
-
-    /* this process will handle basic ble setup and advertising for us */
-    GattServerProcess ble_process(event_queue, ble);
-
-    /* once it's done it will let us continue with our demo */
-    ble_process.on_init(callback(&demo_service, &CarReturnService::start));
-
+    thread.start(BLEsend);
     car.initPathDist();
-    ble_process.start();
 }
